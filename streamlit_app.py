@@ -11,7 +11,7 @@ def rfile(name_file):
 try:
     col1, col2, col3 = st.columns([3, 2, 3])
     with col2:
-        st.image("logo.png", use_container_width=True)
+        st.image("israel-flag.png", use_container_width=True)
 except:
     pass
 
