@@ -1,94 +1,111 @@
 import streamlit as st
 from openai import OpenAI
+from pathlib import Path
 import os
 
-# Hàm đọc nội dung từ file văn bản
-def rfile(name_file):
-    with open(name_file, "r", encoding="utf-8") as file:
-        return file.read()
+# ======================
+# Configuration & Setup
+# ======================
 
-# Hiển thị logo (nếu có)
+# File reading utility
+def read_file(filename: str) -> str:
+    """Read and return content of a text file."""
+    try:
+        return Path(filename).read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        st.error(f"File not found: {filename}")
+        return ""
+
+# Initialize OpenAI client
+openai_api_key = st.secrets.get("OPENAI_API_KEY")
+if not openai_api_key:
+    st.error("OPENAI_API_KEY not found in secrets.")
+    st.stop()
+
+client = OpenAI(api_key=openai_api_key)
+
+# Load static content
+TITLE = read_file("00.xinchao.txt")
+SYSTEM_PROMPT = read_file("01.system_trainning.txt")
+ASSISTANT_GREETING = read_file("02.assistant.txt")
+MODEL_NAME = read_file("module_chatgpt.txt").strip()
+
+# Validate required files
+if not all([TITLE, SYSTEM_PROMPT, ASSISTANT_GREETING, MODEL_NAME]):
+    st.error("One or more required files are missing or empty.")
+    st.stop()
+
+# ======================
+# UI Layout
+# ======================
+
+# Logo (centered)
 try:
     col1, col2, col3 = st.columns([3, 2, 3])
     with col2:
         st.image("israel-flag.png", use_container_width=True)
-except:
-    pass
+except Exception:
+    pass  # Silently ignore if logo missing
 
-# Hiển thị tiêu đề
-title_content = rfile("00.xinchao.txt")
+# Title
 st.markdown(
-    f"""<h1 style="text-align: center; font-size: 24px;">{title_content}</h1>""",
+    f'<h1 style="text-align: center; font-size: 24px;">{TITLE}</h1>',
     unsafe_allow_html=True
 )
 
-# Lấy OpenAI API key từ st.secrets
-openai_api_key = st.secrets.get("OPENAI_API_KEY")
-
-# Khởi tạo OpenAI client
-client = OpenAI(api_key=openai_api_key)
-
-# Khởi tạo tin nhắn "system" và "assistant"
-INITIAL_SYSTEM_MESSAGE = {"role": "system", "content": rfile("01.system_trainning.txt")}
-INITIAL_ASSISTANT_MESSAGE = {"role": "assistant", "content": rfile("02.assistant.txt")}
-
-# Kiểm tra nếu chưa có session lưu trữ thì khởi tạo tin nhắn ban đầu
+# Initialize chat history
 if "messages" not in st.session_state:
-    st.session_state.messages = [INITIAL_SYSTEM_MESSAGE, INITIAL_ASSISTANT_MESSAGE]
+    st.session_state.messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "assistant", "content": ASSISTANT_GREETING}
+    ]
 
-# CSS để căn chỉnh trợ lý bên trái, người hỏi bên phải, và thêm icon trợ lý
-st.markdown(
-    """
-    <style>
-        .assistant {
-            padding: 10px;
-            border-radius: 10px;
-            max-width: 75%;
-            background: none; /* Màu trong suốt */
-            text-align: left;
-        }
-        .user {
-            padding: 10px;
-            border-radius: 10px;
-            max-width: 75%;
-            background: none; /* Màu trong suốt */
-            text-align: right;
-            margin-left: auto;
-        }
-        .assistant::before { content: "🤖 "; font-weight: bold; }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# ======================
+# Display Chat History
+# ======================
 
-# Hiển thị lịch sử tin nhắn (loại bỏ system để tránh hiển thị)
-for message in st.session_state.messages:
-    if message["role"] == "assistant":
-        st.markdown(f'<div class="assistant">{message["content"]}</div>', unsafe_allow_html=True)
-    elif message["role"] == "user":
-        st.markdown(f'<div class="user">{message["content"]}</div>', unsafe_allow_html=True)
+for msg in st.session_state.messages:
+    if msg["role"] == "system":
+        continue  # Skip system prompt
+    avatar = "🤖" if msg["role"] == "assistant" else "👤"
+    with st.chat_message(msg["role"], avatar=avatar):
+        st.markdown(msg["content"])
 
-# Ô nhập liệu cho người dùng
+# ======================
+# User Input & Streaming Response
+# ======================
+
 if prompt := st.chat_input("Sếp nhập nội dung cần trao đổi ở đây nhé?"):
-    # Lưu tin nhắn người dùng vào session
+    # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
-    st.markdown(f'<div class="user">{prompt}</div>', unsafe_allow_html=True)
+    with st.chat_message("user", avatar="👤"):
+        st.markdown(prompt)
 
-    # Tạo phản hồi từ API OpenAI
-    response = ""
-    stream = client.chat.completions.create(
-        model=rfile("module_chatgpt.txt").strip(),
-        messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
-        stream=True,
-    )
+    # Generate assistant response with streaming
+    with st.chat_message("assistant", avatar="🤖"):
+        message_placeholder = st.empty()
+        full_response = ""
 
-    # Ghi lại phản hồi của trợ lý vào biến
-    for chunk in stream:
-        if chunk.choices:
-            response += chunk.choices[0].delta.content or ""
+        try:
+            stream = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": m["role"], "content": m["content"]}
+                    for m in st.session_state.messages
+                ],
+                stream=True,
+            )
 
-    # Hiển thị phản hồi của trợ lý
-    st.markdown(f'<div class="assistant">{response}</div>', unsafe_allow_html=True)
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    full_response += chunk.choices[0].delta.content
+                    message_placeholder.markdown(full_response + "▌")  # Cursor effect
 
-    # Cập nhật lịch sử tin nhắn trong session
-    st.session_state.messages.append({"role": "assistant", "content": response})
+            message_placeholder.markdown(full_response)
+
+        except Exception as e:
+            st.error(f"Error communicating with OpenAI: {e}")
+            full_response = "Xin lỗi, đã có lỗi xảy ra khi xử lý yêu cầu của Sếp."
+
+        # Save assistant response to history
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
