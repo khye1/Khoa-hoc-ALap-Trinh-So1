@@ -69,7 +69,7 @@ for message in st.session_state.messages:
         st.markdown(f'<div class="user">{message["content"]}</div>', unsafe_allow_html=True)
 
 # Ô nhập liệu cho người dùng
-if prompt := st.chat_input("Sếp nhập nội dung cần trao đổi ở đây nhé?"):
+if prompt := st.chat_input("Nhập câu hỏi của bạn..."):
     # Lưu tin nhắn người dùng vào session
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.markdown(f'<div class="user">{prompt}</div>', unsafe_allow_html=True)
