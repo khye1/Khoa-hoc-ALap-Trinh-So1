@@ -75,9 +75,9 @@ if prompt := st.chat_input("Nhập câu hỏi của bạn..."):
     st.markdown(f'<div class="user">{prompt}</div>', unsafe_allow_html=True)
 
     # Tạo phản hồi từ API OpenAI
-    response = ""
+    response = " "
     stream = client.chat.completions.create(
-        model=rfile("module_chatgpt.txt").strip(),
+        model=rfile("gpt-4o-mini").strip(),
         messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
         stream=True,
     )
