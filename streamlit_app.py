@@ -20,10 +20,26 @@ title_content = rfile("00.xinchao.txt")
 st.markdown(
     f"""<h1 style="text-align: center; font-size: 24px;">{title_content}</h1>""",
     unsafe_allow_html=True
-)
+)   
 
 # Lấy OpenAI API key từ st.secrets
-openai_api_key = st.secrets.get("OPENAI_API_KEY")
+openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
+
+# Nếu chưa có trong st.secrets, thử lấy từ biến môi trường
+if not openai_api_key:
+    import os
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+
+# Hiển thị trạng thái API key
+st.sidebar.write("🔐 Has API key:", bool(openai_api_key))
+
+# Nếu vẫn chưa có thì báo lỗi và dừng app
+if not openai_api_key:
+    st.error(
+        "*Không tìm thấy OPENAI_API_KEY. "
+        "Hãy đặt nó trong Secrets của Streamlit hoặc trong biến môi trường.*"
+    )
+    st.stop()
 
 # Khởi tạo OpenAI client
 client = OpenAI(api_key=openai_api_key)
