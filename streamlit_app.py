@@ -2,109 +2,150 @@ import streamlit as st
 from openai import OpenAI
 import os
 
-# Hàm đọc nội dung từ file văn bản
-def rfile(name_file):
-    with open(name_file, "r", encoding="utf-8") as file:
-        return file.read()
 
-# Hiển thị logo (nếu có)
-try:
-    col1, col2, col3 = st.columns([3, 2, 3])
-    with col2:
+# ====================== UTILITIES ======================
+def read_file(filename: str) -> str:
+    """Đọc nội dung file text (utf-8) một cách an toàn."""
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        st.error(f"Không tìm thấy file: {filename}")
+        st.stop()
+
+
+def get_openai_client() -> OpenAI:
+    """Lấy API key và khởi tạo OpenAI client."""
+    api_key = st.secrets.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        st.error(
+            "🔑 Không tìm thấy OPENAI_API_KEY.\n\n"
+            "Vui lòng thêm vào **Secrets** của Streamlit Community Cloud "
+            "hoặc đặt biến môi trường `OPENAI_API_KEY`."
+        )
+        st.stop()
+    return OpenAI(api_key=api_key)
+
+
+# ====================== CONFIG ======================
+# Đọc các file cấu hình một lần duy nhất
+TITLE           = read_file("00.xinchao.txt")
+SYSTEM_PROMPT   = read_file("01.system_trainning.txt")
+ASSISTANT_GREET = read_file("02.assistant.txt")
+MODEL_NAME      = read_file("gpt-4o-mini").strip()  # hoặc bạn có thể hard-code nếu muốn
+
+# Khởi tạo client
+client = get_openai_client()
+
+# Sidebar info
+st.sidebar.write("🔐 Đã có API key:", "✅" if client.api_key else "❌")
+st.sidebar.caption(f"Model: `{MODEL_NAME}`")
+
+
+# ====================== LAYOUT ======================
+# Logo + Tiêu đề
+col1, col2, col3 = st.columns([3, 2, 3])
+with col2:
+    try:
         st.image("israel-flag.png", use_container_width=True)
-except:
-    pass
+    except:
+        pass
 
-# Hiển thị tiêu đề
-title_content = rfile("00.xinchao.txt")
 st.markdown(
-    f"""<h1 style="text-align: center; font-size: 24px;">{title_content}</h1>""",
-    unsafe_allow_html=True
-)   
-
-# Lấy OpenAI API key từ st.secrets
-openai_api_key = st.secrets.get("OPENAI_API_KEY", None)
-
-# Nếu chưa có trong st.secrets, thử lấy từ biến môi trường
-if not openai_api_key:
-    import os
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-
-# Hiển thị trạng thái API key
-st.sidebar.write("🔐 Has API key:", bool(openai_api_key))
-
-# Nếu vẫn chưa có thì báo lỗi và dừng app
-if not openai_api_key:
-    st.error(
-        "*Không tìm thấy OPENAI_API_KEY. "
-        "Hãy đặt nó trong Secrets của Streamlit hoặc trong biến môi trường.*"
-    )
-    st.stop()
-
-# Khởi tạo OpenAI client
-client = OpenAI(api_key=openai_api_key)
-
-# Khởi tạo tin nhắn "system" và "assistant"
-INITIAL_SYSTEM_MESSAGE = {"role": "system", "content": rfile("01.system_trainning.txt")}
-INITIAL_ASSISTANT_MESSAGE = {"role": "assistant", "content": rfile("02.assistant.txt")}
-
-# Kiểm tra nếu chưa có session lưu trữ thì khởi tạo tin nhắn ban đầu
-if "messages" not in st.session_state:
-    st.session_state.messages = [INITIAL_SYSTEM_MESSAGE, INITIAL_ASSISTANT_MESSAGE]
-
-# CSS để căn chỉnh trợ lý bên trái, người hỏi bên phải, và thêm icon trợ lý
-st.markdown(
-    """
-    <style>
-        .assistant {
-            padding: 10px;
-            border-radius: 10px;
-            max-width: 75%;
-            background: none; /* Màu trong suốt */
-            text-align: left;
-        }
-        .user {
-            padding: 10px;
-            border-radius: 10px;
-            max-width: 75%;
-            background: none; /* Màu trong suốt */
-            text-align: right;
-            margin-left: auto;
-        }
-        .assistant::before { content: "🤖 "; font-weight: bold; }
-    </style>
-    """,
-    unsafe_allow_html=True
+    f'<h1 style="text-align: center; font-size: 28px; margin-bottom: 30px;">{TITLE}</h1>',
+    unsafe_allow_html=True,
 )
 
-# Hiển thị lịch sử tin nhắn (loại bỏ system để tránh hiển thị)
-for message in st.session_state.messages:
-    if message["role"] == "assistant":
-        st.markdown(f'<div class="assistant">{message["content"]}</div>', unsafe_allow_html=True)
-    elif message["role"] == "user":
-        st.markdown(f'<div class="user">{message["content"]}</div>', unsafe_allow_html=True)
+# CSS đẹp hơn, hỗ trợ dark mode nhẹ và avatar
+st.markdown("""
+<style>
+    .chat-message {
+        padding: 12px 16px;
+        border-radius: 12px;
+        margin-bottom: 12px;
+        max-width: 80%;
+        line-height: 1.5;
+    }
+    .assistant {
+        background-color: #f1f3f5;
+        border-left: 4px solid #0a7cff;
+    }
+    .user {
+        background-color: #e3f2fd;
+        margin-left: auto;
+        border-right: 4px solid #0a7cff;
+    }
+    .assistant::before { content: "🤖 "; font-size: 1.3em; }
+    .user::after     { content: "👤 "; font-size: 1.3em; }
+    @media (prefers-color-scheme: dark) {
+        .assistant { background-color: #2d3748; }
+        .user     { background-color: #1e3a8a; }
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# Ô nhập liệu cho người dùng
-if prompt := st.chat_input("Nhập câu hỏi của bạn..."):
-    # Lưu tin nhắn người dùng vào session
+
+# ====================== SESSION STATE ======================
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "system",    "content": SYSTEM_PROMPT},
+        {"role": "assistant", "content": ASSISTANT_GREET},
+    ]
+
+
+# ====================== HIỂN THỊ LỊCH SỬ CHAT ======================
+for msg in st.session_state.messages:
+    if msg["role"] == "assistant":
+        st.markdown(
+            f'<div class="chat-message assistant">{msg["content"]}</div>',
+            unsafe_allow_html=True,
+        )
+    elif msg["role"] == "user":
+        st.markdown(
+            f'<div class="chat-message user">{msg["content"]}</div>',
+            unsafe_allow_html=True,
+        )
+
+
+# ====================== INPUT & STREAMING ======================
+if prompt := st.chat_input("Nhập câu hỏi của bạn tại đây..."):
+    # Thêm tin nhắn người dùng
     st.session_state.messages.append({"role": "user", "content": prompt})
-    st.markdown(f'<div class="user">{prompt}</div>', unsafe_allow_html=True)
-
-    # Tạo phản hồi từ API OpenAI
-    response = " "
-    stream = client.chat.completions.create(
-        model=rfile("gpt-4o-mini").strip(),
-        messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
-        stream=True,
+    st.markdown(
+        f'<div class="chat-message user">{prompt}</div>',
+        unsafe_allow_html=True,
     )
 
-    # Ghi lại phản hồi của trợ lý vào biến
-    for chunk in stream:
-        if chunk.choices:
-            response += chunk.choices[0].delta.content or ""
+    # Placeholder để stream phản hồi
+    with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        full_response = ""
 
-    # Hiển thị phản hồi của trợ lý
-    st.markdown(f'<div class="assistant">{response}</div>', unsafe_allow_html=True)
+        # Gọi API với stream=True
+        stream = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
+            stream=True,
+            temperature=0.7,
+        )
 
-    # Cập nhật lịch sử tin nhắn trong session
-    st.session_state.messages.append({"role": "assistant", "content": response})
+        # Hiển thị từng chunk ngay lập tức
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                full_response += chunk.choices[0].delta.content
+                message_placeholder.markdown(
+                    f'<div class="chat-message assistant">{full_response}▌</div>',
+                    unsafe_allow_html=True,
+                )
+
+        # Xóa con trỏ nhấp nháy khi hoàn thành
+        message_placeholder.markdown(
+            f'<div class="chat-message assistant">{full_response}</div>',
+            unsafe_allow_html=True,
+        )
+
+    # Lưu phản hồi vào lịch sử
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+    # Tự động reruns để cập nhật giao diện
+    st.rerun()
